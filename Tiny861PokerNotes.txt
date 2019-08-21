@@ -1,0 +1,104 @@
+8/20/19 - tweaked to use avr-gcc / avrdude on Ubuntu 18.04.
+Haven't tested it on hardware. Went to that toolchain bc MPLAB-X doesn't appear to support the AVR Dragon,
+PICKit 3 doesn't support Tiny861, and Tiny861 doesn't appear to have any supporting compiler / assembler.
+Hi old self!
+- ATM I've just got it to where it seems to compile
+- Not sure if there's any configuration stuff I need to do, e.g. with setting up oscillators and STUFF
+
+11/19/15 - Got this to compile! Not by importing the ancient studio 4 project, but by creating a new project and pulling
+the sources in by hand and fiddling. It didn't like the scorestrs array being kept in PROGMEM, so I just didn't bother with
+that, and I bet it all fits just fine.
+
+- NOW TO TEST THIS NEED TO HOOK IT ALL UP ON THE DEOK, looked like I had one set up down in the scope table
+
+First perhaps I should try some simpler LCD thing, perhaps AVRTextLCD
+
+HERE ARE THE OLD NOTES:
+
+8/9/08b:
+- chip is now 1MHz, code sped up accordingly. Debugwire off.
+- I tried several of the predefined seeds, and all of them
+  worked except the pat-hand ones, which seem to be misprints. So I could well just go assuming that
+  AVR VPOK IS WORKY. And maybe put it online.
+
+
+8/9/08: I think the AVR VPOK is working.
+- almost impossible, possibly completely impossible, to program the chip through SPI. Might be those long wires.
+- It does seem to work OK with DebugWire.
+- Chip currently running at 8MHz, why not. LCD stuff seems to be happy at that speed. I've rewritten the
+  assembly delay routine to be 8MHz-friendly (bunch of nops), but will try to get it to be 1MHz again and
+  see if debugwire works with that. I think of this as a battery-powered application, and the 1MHz should
+  help.
+- So what else needs done?
+- a bit of testing - like taking some seeds from test1Mout.txt and making sure they behave as expected.
+  There's a bunch of them starting at line 208!
+  A few things are missing, like pat royal flush -
+  - but there are about 32*9 longwords = 1152 bytes of seeds (a bit less for missing royal flushes), and
+    I should be able to fit that in the chip along with a bit of code to force the seed to step through an
+	array of those just before a hand is dealt.
+  - 32*9 = 288, which is a lot of hands, but it should go quick. Once that's done, I will feel like the
+    game is tested enough, prolly.
+  - actually the hibyte of all these things is 0x00, so I could do it up as a byte array - let's see if I need to.
+
+8/2/08b: OK, I think it's done! VERIFY AND TEST EVERYTHING!
+- but if it is, it fits comfortably - 6022 bytes program, 50 bytes data, non-optimized.
+- Under -Os, 4040 bytes! -O1, 4000. O2, 4016. O3, overflows.
+
+
+8/2/08: Some improvements that could be made in C version:
+- DONE: in renderWin, center properly
+- warning screen if eeprom found to be trashed in RestoreCoinsAndSeed
+- warning screen when you run out of coins and get a new stash, maybe some tracking of how many times it's happened
+- DONE: Make a nice number rendering routine which drops leading zeroes
+  - got it, renderNumber in main
+  - also have numberStrlen there for use in calculating centering!
+
+7/31/08: hm, still something weird with this - doesn't come up every time.
+i.e., on powerup, sometimes the screen just stays blank.
+- if I take the delay out of the clear-screen function, it always goobers up.
+  like custom chars go bad and stuff.
+- I bet my LCDBusy still doesn't work. Could it be because I had DEBUG_LCD defined?
+  Oh MAYBE!!!!!!!!!!! Ha. Seems worky now w/o any delays! 11 power cycles!
+- OK, betscreen is now roughed in and appears to be working.
+- For some reason, with ckdiv set, the dragon doesn't want to program the chip -
+  it keeps screwing up. Might be b/c of the long wires I'm using, or something.
+- SO HERE'S HOW I GOT IT TO PROGRAM:
+  - disabled ckdiv / programmed fuses
+  - programmed (still took a couple of tries) at 125KHz. Interestingly, the LCD code seems to work fine at 8MHz!
+    the only noticeable difference was the speed of the coin count-up on the bet screen (need to set prevcoins = coins and stuff
+	at startup, but that's all roughed in anyway).
+  - reenabled ckdiv / programmed fuses.
+- So, good enough for now.!!
+
+7/29/08: coming along nicely - have the dealing and scoring code roughed in from my old C program that
+I used to test the PIC version, vpok_scoretest.c, thankee former self.
+- also custom chars should be in there
+- what's left? really just interfacing stuff. How about next drawing the hand?
+- OK. from ocp-gamescreen.asm, about all that's left is renderscore / renderwin.
+
+7/27/08:
+
+I now have an LCD driver working well enough that I should be able to port One Chip Video Poker to the AVR pretty easily.
+- Copied the main C file and the asm LCD driver from my test program.
+- Here's the idea: Should be able to run at 1MHz and do fine, so the LCD code should be worky as-is.
+- I should have some seeds saved off somewhere that correspond to certain hands - at least on my website!
+  - aha, vashbkup\vol1\mpwin\pic\vpoktest_c has the file test1Mout.txt which I hav copied here.
+  - ooh, and vpok_scoretest.c there might have a fair lump of the game implementation - tho looks like
+    I wasn't all that careful with memory, - and maybe I won't need to be!
+
+- about eeprom - only 100,000 write cycles - so maybe the thing to do is this:
+  - treat eeprom as a ring buffer (tiny861 has 512 bytes)
+  - use 8 bytes for the entry (so tiny861 would have space for 64 different spots
+    - first 2 bytes are some magic number like d00d
+	- next 2 are coins
+	- last 4 are seed
+  - then, when going to write coins/seed to the eeprom, do this:
+    - trample magic number in current record with 0000 say
+	- advance record index
+	- write new record incl magic number!
+  - so, on startup, just scan along in the eeprom until you find a correct magic number, then go
+    with that.
+
+- OK, AVRVpokStrings.c contains the text stuff that'll be needed for the game... not sure how to
+  use it all! avr-libc-user-manual/group__avr__pgmspace.html talks about it, but I don't feel like dealing
+  with it now.
